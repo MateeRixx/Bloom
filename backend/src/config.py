@@ -71,5 +71,18 @@ CONF_MED_AREA_MULT = 1.5           # >= 1.5x min area => Medium, else Low
 CONF_HIGH_REGION_COUNT = 5         # >= this many regions => High confidence
 CONF_MED_REGION_COUNT = 2          # >= this many regions => Medium confidence
 
+# --- Overlay colours (RGB, per schema) ---
+ACNE_COLOUR = (59, 130, 246)       # blue contours
+REDNESS_COLOUR = (239, 68, 68)     # red fill
+BLEMISH_COLOUR = (234, 179, 8)     # yellow contours
+BASELINE_COLOUR = (148, 163, 184)  # slate contours for baseline
+SKIN_MASK_COLOUR = (16, 185, 129)  # green skin-mask overlay
+FILL_OPACITY = 0.4                 # redness fill alpha
+SKIN_OVERLAY_OPACITY = 0.4         # skin-mask overlay alpha
+CONTOUR_THICKNESS = 2              # contour line width (px)
+
+# --- API ---
+RATE_LIMIT = "10/minute"           # per-IP rate limit on /api/analyse
+
 # --- Output ---
 JPEG_QUALITY = 85                  # Base64 output image compression quality
