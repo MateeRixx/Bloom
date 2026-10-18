@@ -44,6 +44,7 @@ HP_KERNEL_SIZE = (21, 21)          # High-pass = original - LP
 REDNESS_A_THRESHOLD = 135          # LAB A-channel: above this = redness
 BLEMISH_L_DELTA = 30               # L below (mean_skin_L - delta) = dark spot
 ACNE_DOG_THRESHOLD_RATIO = 0.15    # Fraction of DoG max used as threshold
+LESION_MORPH_KERNEL = (3, 3)       # Small close kernel to join speckled lesion px
 MIN_LESION_AREA_PX = 50            # Contours smaller than this = noise, ignored
 
 # --- Watershed ---
