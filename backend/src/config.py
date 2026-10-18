@@ -23,7 +23,9 @@ SKIN_CB_MIN, SKIN_CB_MAX = 77, 127     # YCrCb Cb channel range
 SKIN_H_MIN, SKIN_H_MAX = 0, 25         # HSV Hue range
 SKIN_S_MIN, SKIN_S_MAX = 20, 170       # HSV Saturation range
 SKIN_V_MIN, SKIN_V_MAX = 50, 255       # HSV Value range
+SKIN_MORPH_KERNEL = (5, 5)             # Open/close kernel for skin mask cleanup
 ROI_EROSION_PX = 15                    # Pixels to erode from face boundary
+EXCLUSION_DILATE_PX = 5                # Extra margin around eyes/lips/brows/nose
 
 # --- MediaPipe face ---
 MEDIAPIPE_MODEL_SELECTION = 1          # FaceDetection: 1 = full-range (works near + far)
