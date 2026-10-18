@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: bloom-api
+    env: python
+    pythonVersion: "3.11.9"
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: https://bloom.onrender.com
+      - key: MAX_IMAGE_SIZE_MB
+        value: "10"
+      - key: LOG_LEVEL
+        value: INFO
+
+  - type: web
+    name: bloom
+    runtime: static
+    buildCommand: cd frontend && npm install && npm run build
+    staticPublishPath: frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://bloom-api.onrender.com
