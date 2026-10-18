@@ -18,11 +18,11 @@ BILATERAL_SIGMA_COLOR = 75
 BILATERAL_SIGMA_SPACE = 75
 
 # --- Skin segmentation ---
-SKIN_CR_MIN, SKIN_CR_MAX = 133, 173    # YCrCb Cr channel range
-SKIN_CB_MIN, SKIN_CB_MAX = 77, 127     # YCrCb Cb channel range
-SKIN_H_MIN, SKIN_H_MAX = 0, 25         # HSV Hue range
-SKIN_S_MIN, SKIN_S_MAX = 20, 170       # HSV Saturation range
-SKIN_V_MIN, SKIN_V_MAX = 50, 255       # HSV Value range
+SKIN_CR_MIN, SKIN_CR_MAX = 133, 180    # YCrCb Cr channel range (widened for coverage)
+SKIN_CB_MIN, SKIN_CB_MAX = 77, 135     # YCrCb Cb channel range (widened for coverage)
+SKIN_H_MIN, SKIN_H_MAX = 0, 30         # HSV Hue range (widened)
+SKIN_S_MIN, SKIN_S_MAX = 15, 210       # HSV Saturation range (widened)
+SKIN_V_MIN, SKIN_V_MAX = 40, 255       # HSV Value range (widened)
 SKIN_MORPH_KERNEL = (5, 5)             # Open/close kernel for skin mask cleanup
 ROI_EROSION_PX = 15                    # Pixels to erode from face boundary
 EXCLUSION_DILATE_PX = 5                # Extra margin around eyes/lips/brows/nose
@@ -41,7 +41,7 @@ LP_KERNEL_SIZE = (21, 21)          # Low-pass Gaussian kernel
 HP_KERNEL_SIZE = (21, 21)          # High-pass = original - LP
 
 # --- Lesion detection ---
-REDNESS_A_THRESHOLD = 135          # LAB A-channel: above this = redness
+REDNESS_A_DELTA = 12               # LAB A above (mean_skin_A + delta) = redness (adaptive)
 BLEMISH_L_DELTA = 30               # L below (mean_skin_L - delta) = dark spot
 ACNE_DOG_THRESHOLD_RATIO = 0.15    # Fraction of DoG max used as threshold
 LESION_MORPH_KERNEL = (3, 3)       # Small close kernel to join speckled lesion px
@@ -58,8 +58,18 @@ SEVERITY = {
     "blemish": {"Mild": 1.0, "Moderate": 3.0},
 }
 
+# --- Naive baseline (comparison only) ---
+NAIVE_REDNESS_A_THRESHOLD = 135    # fixed absolute A threshold (doc default, over-detects)
+NAIVE_BLEMISH_L_THRESHOLD = 100    # fixed absolute dark threshold
+
 # --- Evaluation ---
-CONSENSUS_HIGH_CONF = 0.5          # Pixels both pipelines agree on (>= ratio) form pseudo-GT
+CONSENSUS_CORE_ERODE_PX = 2        # Erode each mask to its "high-confidence core" for pseudo-GT
+
+# --- Confidence scoring ---
+CONF_HIGH_AREA_MULT = 3.0          # region area >= 3x min area => High
+CONF_MED_AREA_MULT = 1.5           # >= 1.5x min area => Medium, else Low
+CONF_HIGH_REGION_COUNT = 5         # >= this many regions => High confidence
+CONF_MED_REGION_COUNT = 2          # >= this many regions => Medium confidence
 
 # --- Output ---
 JPEG_QUALITY = 85                  # Base64 output image compression quality

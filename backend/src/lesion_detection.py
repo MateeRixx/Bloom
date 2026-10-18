@@ -8,12 +8,14 @@ from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 
 from src.config import (
-    REDNESS_A_THRESHOLD,
+    REDNESS_A_DELTA,
     BLEMISH_L_DELTA,
     ACNE_DOG_THRESHOLD_RATIO,
     LESION_MORPH_KERNEL,
     WATERSHED_DIST_THRESHOLD,
     WATERSHED_MIN_DISTANCE,
+    NAIVE_REDNESS_A_THRESHOLD,
+    NAIVE_BLEMISH_L_THRESHOLD,
 )
 
 
@@ -23,9 +25,14 @@ def _restrict(mask: np.ndarray, zone: np.ndarray) -> np.ndarray:
 
 
 def _redness_mask(lab: np.ndarray, zone: np.ndarray) -> np.ndarray:
-    """Returns binary mask of pixels whose LAB A-channel exceeds threshold."""
+    """Returns binary mask of pixels redder than (skin mean A + delta)."""
     a = lab[:, :, 1]
-    mask = np.where(a > REDNESS_A_THRESHOLD, 255, 0).astype(np.uint8)
+    skin_pixels = a[zone > 0]
+    if skin_pixels.size == 0:
+        return np.zeros_like(a)
+    # adaptive: baseline skin redness se kitna upar hai (absolute threshold se robust)
+    threshold = float(skin_pixels.mean()) + REDNESS_A_DELTA
+    mask = np.where(a > threshold, 255, 0).astype(np.uint8)
     return _restrict(mask, zone)
 
 
@@ -71,6 +78,16 @@ def _acne_mask(dog: np.ndarray, zone: np.ndarray) -> np.ndarray:
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LESION_MORPH_KERNEL)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     return _separate_touching(mask)
+
+
+def naive_combined_mask(image: np.ndarray, skin_mask: np.ndarray) -> np.ndarray:
+    """Baseline: fixed absolute redness + dark thresholds on broad skin. No adaptive, no exclusions, no watershed."""
+    lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
+    l, a = lab[:, :, 0], lab[:, :, 1]
+    red = np.where(a > NAIVE_REDNESS_A_THRESHOLD, 255, 0).astype(np.uint8)
+    dark = np.where(l < NAIVE_BLEMISH_L_THRESHOLD, 255, 0).astype(np.uint8)
+    # broad skin (eyes/lips included) => false positives expected
+    return cv2.bitwise_and(cv2.bitwise_or(red, dark), skin_mask)
 
 
 def run(frequency: dict, segmentation: dict) -> dict:
