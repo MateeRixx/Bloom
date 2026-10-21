@@ -1,24 +1,34 @@
-"""Skin colour mask + MediaPipe face ROI + eye/lip/brow/nose exclusion. Sab RGB in/out."""
+"""Skin colour mask + MediaPipe FaceMesh ROI + eye/lip/brow/nose exclusion.
+
+Strict mode: facial analysis requires a detected face. There is no fallback ROI.
+If FaceMesh cannot return landmarks, ``FaceLandmarkError`` is raised so the API can
+return an actionable status instead of analysing arbitrary background pixels.
+"""
 from __future__ import annotations
 
 import cv2
 import numpy as np
 
 from src.config import (
-    SKIN_CR_MIN, SKIN_CR_MAX,
-    SKIN_CB_MIN, SKIN_CB_MAX,
-    SKIN_H_MIN, SKIN_H_MAX,
-    SKIN_S_MIN, SKIN_S_MAX,
-    SKIN_V_MIN, SKIN_V_MAX,
-    SKIN_MORPH_KERNEL,
-    ROI_EROSION_PX,
     EXCLUSION_DILATE_PX,
-    FALLBACK_MARGIN,
     FACE_MESH_MAX_FACES,
     FACE_MESH_MIN_DETECTION_CONFIDENCE,
+    ROI_EROSION_PX,
+    SKIN_CB_MAX,
+    SKIN_CB_MIN,
+    SKIN_CR_MAX,
+    SKIN_CR_MIN,
+    SKIN_H_MAX,
+    SKIN_H_MIN,
+    SKIN_MORPH_KERNEL,
+    SKIN_S_MAX,
+    SKIN_S_MIN,
+    SKIN_V_MAX,
+    SKIN_V_MIN,
 )
+from src.errors import FaceLandmarkError
 
-# FaceMesh bhaari hai, lazy-load karenge.
+# FaceMesh is heavy; lazy-load on first use.
 _face_mesh = None
 
 
@@ -37,7 +47,7 @@ def _get_face_mesh():
 
 
 def _run_face_mesh(image: np.ndarray):
-    """Returns normalized landmarks [(x, y), ...] for first face, or None."""
+    """Returns normalized landmarks [(x, y), ...] for the largest/first face, or None."""
     result = _get_face_mesh().process(image)
     if not result.multi_face_landmarks:
         return None
@@ -53,15 +63,6 @@ def _points_px(landmarks, shape, indices) -> np.ndarray:
     """Converts normalized landmark indices to integer pixel points."""
     h, w = shape[:2]
     return np.array([[int(landmarks[i][0] * w), int(landmarks[i][1] * h)] for i in indices], np.int32)
-
-
-def _fallback_face_mask(shape) -> np.ndarray:
-    """Returns centre-region rectangle mask when no face is detected."""
-    h, w = shape[:2]
-    mask = np.zeros((h, w), np.uint8)
-    m = FALLBACK_MARGIN
-    mask[int(h * m):int(h * (1 - m)), int(w * m):int(w * (1 - m))] = 255
-    return mask
 
 
 def _face_oval_mask(landmarks, shape) -> np.ndarray:
@@ -93,34 +94,36 @@ def _skin_colour_mask(image: np.ndarray) -> np.ndarray:
     in_ycrcb = cv2.inRange(ycrcb, (0, SKIN_CR_MIN, SKIN_CB_MIN), (255, SKIN_CR_MAX, SKIN_CB_MAX))
     in_hsv = cv2.inRange(hsv, (SKIN_H_MIN, SKIN_S_MIN, SKIN_V_MIN), (SKIN_H_MAX, SKIN_S_MAX, SKIN_V_MAX))
     mask = cv2.bitwise_and(in_ycrcb, in_hsv)
-    # speckle hatao, holes bharo
+    # remove speckles and fill holes
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, SKIN_MORPH_KERNEL)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     return cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
 
 
-def _build_face_and_exclusion(image: np.ndarray):
-    """Returns (face_mask, exclusion_mask, mode). Single FaceMesh inference."""
+def get_face_mask(image: np.ndarray) -> np.ndarray:
+    """Returns the face-oval mask, raising FaceLandmarkError when no face is found."""
     landmarks = _run_face_mesh(image)
     if landmarks is None:
-        # No face => centre fallback, koi exclusion nahi
-        return _fallback_face_mask(image.shape), np.zeros(image.shape[:2], np.uint8), "fallback"
-    return _face_oval_mask(landmarks, image.shape), _exclusion_mask(landmarks, image.shape), "mediapipe"
-
-
-def get_face_mask(image: np.ndarray) -> tuple[np.ndarray, str]:
-    """Returns (binary face mask, mode) where mode is 'mediapipe' or 'fallback'."""
-    mask, _, mode = _build_face_and_exclusion(image)
-    return mask, mode
+        raise FaceLandmarkError(
+            "No face landmarks detected — centre a single, unobstructed face in frame."
+        )
+    return _face_oval_mask(landmarks, image.shape)
 
 
 def run(image: np.ndarray) -> dict:
-    """Returns SegmentationMasks dict: skin_mask, analysis_zone, face_mask, exclusion_mask, mediapipe_mode."""
+    """Returns SegmentationMasks dict; raises FaceLandmarkError in strict mode."""
     if image is None or image.size == 0:
         raise ValueError("skin_segmentation.run received empty image array")
 
-    face_mask, exclusion_mask, mode = _build_face_and_exclusion(image)
-    # face boundary se ROI_EROSION_PX andar tak hi analyse karenge
+    landmarks = _run_face_mesh(image)
+    if landmarks is None:
+        raise FaceLandmarkError(
+            "No face landmarks detected — centre a single, unobstructed face in frame."
+        )
+
+    face_mask = _face_oval_mask(landmarks, image.shape)
+    exclusion_mask = _exclusion_mask(landmarks, image.shape)
+    # analyse only inside the face boundary, eroded away from hair/background
     roi = cv2.erode(face_mask, None, iterations=ROI_EROSION_PX)
     skin_mask = cv2.bitwise_and(_skin_colour_mask(image), roi)
     analysis_zone = cv2.bitwise_and(skin_mask, cv2.bitwise_not(exclusion_mask))
@@ -130,7 +133,8 @@ def run(image: np.ndarray) -> dict:
         "analysis_zone": analysis_zone,
         "face_mask": face_mask,
         "exclusion_mask": exclusion_mask,
-        "mediapipe_mode": mode,
+        "mediapipe_mode": "mediapipe",
+        "landmarks_available": True,
     }
 
 
@@ -139,7 +143,9 @@ if __name__ == "__main__":
 
     from src.preprocessing import run as preprocess
 
-    path = sys.argv[1] if len(sys.argv) > 1 else "test_image.jpg"
+    if len(sys.argv) < 2:
+        raise SystemExit("usage: python -m src.skin_segmentation <image>")
+    path = sys.argv[1]
     with open(path, "rb") as f:
         image, _ = preprocess(f.read())
 

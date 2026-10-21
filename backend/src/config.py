@@ -1,14 +1,23 @@
-"""Central config. Yahi ek jagah hai jahan numeric constants rehte hain — kisi aur module me literal number nahi."""
+"""Central config. Numeric constants live here — processing modules do not hardcode them.
+
+All values are prototype parameters, not medically validated cut-offs.
+"""
 
 # --- Image preprocessing ---
 RESIZE_TARGET = (512, 512)         # All images normalised to this before processing
 TARGET_L_MEAN = 130                # LAB L-channel normalisation target
 
+# --- Upload / decode safety (compressed size is checked in main.py) ---
+MAX_IMAGE_SIZE_MB = 10
+MIN_IMAGE_SIDE = 200               # Reject thumbnails/accidental crops
+MAX_IMAGE_WIDTH = 6000
+MAX_IMAGE_HEIGHT = 6000
+MAX_IMAGE_PIXELS = 24_000_000      # ~24 MP; checked before full decode
+
 # --- Quality gate ---
 MIN_BRIGHTNESS = 60                # Below this: image too dark
 MAX_BRIGHTNESS = 210               # Above this: image overexposed
 MIN_BLUR_SCORE = 80                # Laplacian variance below this: too blurry
-MAX_IMAGE_SIZE_MB = 10
 
 # --- Enhancement ---
 CLAHE_CLIP_LIMIT = 2.0
@@ -16,6 +25,7 @@ CLAHE_TILE_GRID = (8, 8)
 BILATERAL_D = 9
 BILATERAL_SIGMA_COLOR = 75
 BILATERAL_SIGMA_SPACE = 75
+GAMMA_CORRECTION = 0.8             # For histogram-processing comparisons
 
 # --- Skin segmentation ---
 SKIN_CR_MIN, SKIN_CR_MAX = 133, 180    # YCrCb Cr channel range (widened for coverage)
@@ -27,18 +37,29 @@ SKIN_MORPH_KERNEL = (5, 5)             # Open/close kernel for skin mask cleanup
 ROI_EROSION_PX = 15                    # Pixels to erode from face boundary
 EXCLUSION_DILATE_PX = 5                # Extra margin around eyes/lips/brows/nose
 
-# --- MediaPipe face ---
-MEDIAPIPE_MODEL_SELECTION = 1          # FaceDetection: 1 = full-range (works near + far)
-FACE_MIN_DETECTION_CONFIDENCE = 0.5
+# --- MediaPipe FaceMesh (single face/landmark source; strict mode) ---
 FACE_MESH_MAX_FACES = 1
 FACE_MESH_MIN_DETECTION_CONFIDENCE = 0.5
-FALLBACK_MARGIN = 0.2                  # Fallback ROI = centre (1 - 2*margin) of image
 
-# --- Frequency decomposition ---
+# --- Frequency decomposition (spatial-domain baseline) ---
 DOG_SIGMA_1 = 1.0                  # Fine-detail Gaussian
 DOG_SIGMA_2 = 3.0                  # Coarse Gaussian; DoG = sigma1 - sigma2
 LP_KERNEL_SIZE = (21, 21)          # Low-pass Gaussian kernel
-HP_KERNEL_SIZE = (21, 21)          # High-pass = original - LP
+HP_KERNEL_SIZE = (21, 21)          # High-pass = original - LP (diagnostic only)
+
+# --- True frequency-domain processing (2D FFT) ---
+# Cut-offs are fractions of min(rows, cols), so they are resolution independent.
+FFT_LOW_CUTOFF = 0.02              # High-pass edge of the Gaussian band-pass
+FFT_HIGH_CUTOFF = 0.25             # Low-pass edge of the Gaussian band-pass
+
+# --- Gradient / edge detection ---
+SOBEL_KSIZE = 3
+CANNY_LOW_THRESHOLD = 50
+CANNY_HIGH_THRESHOLD = 150
+
+# --- Thresholding alternatives ---
+ADAPTIVE_BLOCK_SIZE = 31           # Must be odd; scaled before use if image is small
+ADAPTIVE_C = 5.0
 
 # --- Lesion detection (contrast-adaptive: offset = max(floor, mult * skin std)) ---
 REDNESS_A_MIN_DELTA = 10           # Min A offset above skin mean (guards low-contrast/uniform skin)
@@ -53,7 +74,8 @@ MIN_LESION_AREA_PX = 50            # Contours smaller than this = noise, ignored
 WATERSHED_DIST_THRESHOLD = 0.4    # Fraction of dist max used as sure-fg seed
 WATERSHED_MIN_DISTANCE = 10        # Min px between local maxima (spot separation)
 
-# --- Severity thresholds (area as % of skin region) ---
+# --- Severity thresholds (area as % of analysable skin area) ---
+# Prototype thresholds only; not clinically validated.
 SEVERITY = {
     "acne":    {"Mild": 1.0, "Moderate": 3.0},   # >3 = Severe
     "redness": {"Mild": 4.0, "Moderate": 12.0},
@@ -63,15 +85,20 @@ SEVERITY = {
 # --- Naive baseline (comparison only) ---
 NAIVE_REDNESS_A_THRESHOLD = 135    # fixed absolute A threshold (doc default, over-detects)
 NAIVE_BLEMISH_L_THRESHOLD = 100    # fixed absolute dark threshold
+NAIVE_ACNE_DOG_ABS_THRESHOLD = 12  # fixed absolute |DoG| threshold on broad skin
 
-# --- Evaluation ---
-CONSENSUS_CORE_ERODE_PX = 2        # Erode each mask to its "high-confidence core" for pseudo-GT
+# --- Restoration experiments ---
+MEDIAN_KERNEL_SIZE = 5
+GAUSSIAN_DENOISE_SIGMA = 1.0
+WIENER_KERNEL_SIZE = 5
+WIENER_NOISE = 0.01
 
-# --- Confidence scoring ---
-CONF_HIGH_AREA_MULT = 3.0          # region area >= 3x min area => High
-CONF_MED_AREA_MULT = 1.5           # >= 1.5x min area => Medium, else Low
-CONF_HIGH_REGION_COUNT = 5         # >= this many regions => High confidence
-CONF_MED_REGION_COUNT = 2          # >= this many regions => Medium confidence
+# --- Texture / shape features ---
+GLCM_LEVELS = 32
+GLCM_DISTANCES = (1,)
+GLCM_ANGLES = (0.0, 0.785398, 1.570796, 2.356194)  # 0, 45, 90, 135 degrees
+LBP_RADIUS = 1
+LBP_POINTS = 8
 
 # --- Overlay colours (RGB, per schema) ---
 ACNE_COLOUR = (59, 130, 246)       # blue contours

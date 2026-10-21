@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import UploadZone from "./components/UploadZone.jsx";
 import ProcessingView from "./components/ProcessingView.jsx";
 import ResultsPanel from "./components/ResultsPanel.jsx";
 import ErrorView from "./components/ErrorView.jsx";
 import { analyseImage } from "./api.js";
+import { saveScan, getHistory } from "./utils/history.js";
 
 const MAX_MB = 10;
 const ALLOWED_TYPES = ["image/jpeg", "image/png"];
@@ -15,6 +16,7 @@ const INITIAL_STATE = {
   result: null,
   errorMessage: null,
   fileError: null,
+  history: [],
 };
 
 /**
@@ -22,7 +24,32 @@ const INITIAL_STATE = {
  */
 function App() {
   const [state, setState] = useState(INITIAL_STATE);
+  const controllerRef = useRef(null);
+  const requestIdRef = useRef(0);
+  const previewUrlRef = useRef(null);
+
   const update = (patch) => setState((prev) => ({ ...prev, ...patch }));
+
+  const revokePreview = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+  };
+
+  const abortRequest = () => {
+    controllerRef.current?.abort();
+    controllerRef.current = null;
+  };
+
+  useEffect(() => () => {
+    abortRequest();
+    revokePreview();
+  }, []);
+
+  useEffect(() => {
+    setState((prev) => ({ ...prev, history: getHistory() }));
+  }, []);
 
   const handleSelect = (file) => {
     // client-side validation (server re-checks)
@@ -34,20 +61,35 @@ function App() {
       update({ fileError: `Image is too large. Maximum size is ${MAX_MB}MB.` });
       return;
     }
-    update({ selectedFile: file, previewUrl: URL.createObjectURL(file), fileError: null });
+    abortRequest();
+    revokePreview();
+    const previewUrl = URL.createObjectURL(file);
+    previewUrlRef.current = previewUrl;
+    update({ selectedFile: file, previewUrl, fileError: null });
   };
 
   const handleClear = () => {
-    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+    abortRequest();
+    revokePreview();
     update({ selectedFile: null, previewUrl: null, fileError: null });
   };
 
   const handleAnalyse = async () => {
+    abortRequest();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
     update({ view: "processing", errorMessage: null });
-    const data = await analyseImage(state.selectedFile);
+
+    const data = await analyseImage(state.selectedFile, { signal: controller.signal });
+    // Ignore aborted or superseded responses.
+    if (requestId !== requestIdRef.current || data.status === "aborted") return;
+    controllerRef.current = null;
 
     if (data.status === "success") {
-      update({ view: "results", result: data });
+      saveScan(data);
+      update({ view: "results", result: data, history: getHistory() });
     } else if (data.status === "quality_error") {
       update({ view: "error", result: data, errorMessage: data.quality?.issues || [] });
     } else {
@@ -56,7 +98,8 @@ function App() {
   };
 
   const handleReset = () => {
-    if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+    abortRequest();
+    revokePreview();
     setState(INITIAL_STATE);
   };
 
@@ -81,16 +124,7 @@ function App() {
 
         {state.view === "processing" && <ProcessingView />}
 
-        {state.view === "results" && (
-          <>
-            {state.result.mediapipe_mode === "fallback" && (
-              <p className="mt-6 rounded-lg border border-yellow-200 bg-yellow-50 px-4 py-2 text-sm text-yellow-800">
-                No face detected — analysed the central region instead.
-              </p>
-            )}
-            <ResultsPanel result={state.result} onReset={handleReset} />
-          </>
-        )}
+        {state.view === "results" && <ResultsPanel result={state.result} history={state.history} onReset={handleReset} />}
 
         {state.view === "error" && (
           <ErrorView

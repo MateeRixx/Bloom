@@ -5,9 +5,9 @@ import cv2
 import numpy as np
 
 from src.config import (
-    LP_KERNEL_SIZE,
     DOG_SIGMA_1,
     DOG_SIGMA_2,
+    LP_KERNEL_SIZE,
 )
 
 
@@ -40,10 +40,12 @@ def run(image: np.ndarray) -> dict:
 if __name__ == "__main__":
     import sys
 
-    from src.preprocessing import load_image_from_bytes
     from src.enhancement import run as enhance
+    from src.preprocessing import load_image_from_bytes
 
-    path = sys.argv[1] if len(sys.argv) > 1 else "test_image.jpg"
+    if len(sys.argv) < 2:
+        raise SystemExit("usage: python -m src.frequency_decomposition <image>")
+    path = sys.argv[1]
     with open(path, "rb") as f:
         image = load_image_from_bytes(f.read())
 

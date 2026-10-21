@@ -1,98 +1,101 @@
-"""Baseline-vs-improved pixel metrics against a consensus pseudo-GT (runtime me real ground truth nahi hota)."""
+"""Independent mask metrics. No ground truth is derived from predictions here.
+
+Conventions
+-----------
+- Masks are 2D arrays; any non-zero pixel is foreground.
+- Both empty: IoU = Dice = 1. Precision/recall/F1 are undefined (``None``).
+- GT empty, prediction non-empty: IoU = Dice = 0, precision = 0, recall/F1 = ``None``.
+- Prediction empty, GT non-empty: IoU = Dice = 0, recall = 0, precision/F1 = ``None``.
+- Otherwise all five metrics are defined.
+- Aggregation is a macro-average across images/classes; undefined values are
+  excluded and the number excluded is reported per metric.
+"""
 from __future__ import annotations
 
-import cv2
 import numpy as np
 
-from src.config import CONSENSUS_CORE_ERODE_PX
+METRIC_KEYS = ("iou", "dice", "precision", "recall", "f1")
 
 
-def combine_masks(masks: list[np.ndarray]) -> np.ndarray:
-    """Returns union of binary masks."""
-    out = np.zeros_like(masks[0])
-    for mask in masks:
-        out = cv2.bitwise_or(out, mask)
-    return out
-
-
-def _core(mask: np.ndarray) -> np.ndarray:
-    """Returns high-confidence core of a mask (eroded); falls back to mask if too small."""
-    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * CONSENSUS_CORE_ERODE_PX + 1,) * 2)
-    core = cv2.erode(mask, k)
-    return core if core.max() > 0 else mask.copy()
-
-
-def consensus_ground_truth(baseline: np.ndarray, improved: np.ndarray) -> np.ndarray:
-    """Returns pseudo-GT = high-confidence pixels of BOTH pipelines (core intersection).
-
-    Note: GT ⊆ both masks, so recall pins to 1.0 for each; precision/IoU/F1 remain
-    discriminating and favour the tighter improved pipeline.
-    """
-    gt = cv2.bitwise_and(_core(baseline), _core(improved))
-    # agar dono bilkul agree nahi karte to improved core ko reference maano
-    return gt if gt.max() > 0 else _core(improved)
+def validate_binary_mask(mask: np.ndarray, name: str = "mask") -> np.ndarray:
+    """Returns a boolean mask after validating shape and values."""
+    if mask is None:
+        raise ValueError(f"{name} is None")
+    arr = np.asarray(mask)
+    if arr.ndim != 2:
+        raise ValueError(f"{name} must be 2D, got shape {arr.shape}")
+    unique = np.unique(arr)
+    allowed = {0, 1, 255}
+    if not set(np.unique(unique).tolist()).issubset(allowed):
+        raise ValueError(f"{name} must contain only 0/1/255, got values {unique[:10].tolist()}")
+    return arr > 0
 
 
 def compute_pixel_metrics(pred: np.ndarray, gt: np.ndarray) -> dict:
-    """Returns {iou, dice, precision, recall, f1} between predicted and reference masks."""
-    p = pred.astype(bool).ravel()
-    g = gt.astype(bool).ravel()
+    """Returns pixel metrics and support counts for one prediction/GT pair."""
+    p = validate_binary_mask(pred, "prediction")
+    g = validate_binary_mask(gt, "ground_truth")
+    if p.shape != g.shape:
+        raise ValueError(f"prediction shape {p.shape} != ground_truth shape {g.shape}")
+
     tp = int(np.logical_and(p, g).sum())
     fp = int(np.logical_and(p, ~g).sum())
     fn = int(np.logical_and(~p, g).sum())
 
-    # dono khaali => perfect agreement
     if tp + fp + fn == 0:
-        return {k: 1.0 for k in ("iou", "dice", "precision", "recall", "f1")}
+        return {
+            "iou": 1.0, "dice": 1.0,
+            "precision": None, "recall": None, "f1": None,
+            "tp": 0, "fp": 0, "fn": 0, "gt_pixels": 0, "pred_pixels": 0,
+        }
 
-    precision = tp / (tp + fp) if (tp + fp) else 0.0
-    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    precision = tp / (tp + fp) if (tp + fp) else None
+    recall = tp / (tp + fn) if (tp + fn) else None
     iou = tp / (tp + fp + fn)
     dice = 2 * tp / (2 * tp + fp + fn)
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision and recall) else None
+    # If one side is empty, F1 is 0 because there are no true positives.
+    if precision == 0 or recall == 0:
+        f1 = 0.0
 
     return {
-        "iou": round(iou, 3),
-        "dice": round(dice, 3),
-        "precision": round(precision, 3),
-        "recall": round(recall, 3),
-        "f1": round(f1, 3),
+        "iou": round(float(iou), 4),
+        "dice": round(float(dice), 4),
+        "precision": None if precision is None else round(float(precision), 4),
+        "recall": None if recall is None else round(float(recall), 4),
+        "f1": None if f1 is None else round(float(f1), 4),
+        "tp": tp, "fp": fp, "fn": fn,
+        "gt_pixels": int(g.sum()), "pred_pixels": int(p.sum()),
     }
 
 
-def run(baseline_mask: np.ndarray, improved_mask: np.ndarray) -> dict:
-    """Returns MetricsResult: {baseline, improved} scored against the consensus pseudo-GT."""
-    gt = consensus_ground_truth(baseline_mask, improved_mask)
-    return {
-        "baseline": compute_pixel_metrics(baseline_mask, gt),
-        "improved": compute_pixel_metrics(improved_mask, gt),
+def aggregate_metrics(rows: list[dict]) -> dict:
+    """Returns macro mean/median and valid/excluded counts for each metric."""
+    out: dict = {"n_pairs": len(rows)}
+    for key in METRIC_KEYS:
+        values = [row[key] for row in rows if row.get(key) is not None]
+        out[key] = {
+            "macro_mean": round(float(np.mean(values)), 4) if values else None,
+            "macro_median": round(float(np.median(values)), 4) if values else None,
+            "n_valid": len(values),
+            "n_excluded": len(rows) - len(values),
+        }
+    out["support"] = {
+        "tp": int(sum(row.get("tp", 0) for row in rows)),
+        "fp": int(sum(row.get("fp", 0) for row in rows)),
+        "fn": int(sum(row.get("fn", 0) for row in rows)),
+        "gt_pixels": int(sum(row.get("gt_pixels", 0) for row in rows)),
+        "pred_pixels": int(sum(row.get("pred_pixels", 0) for row in rows)),
     }
+    return out
 
 
-if __name__ == "__main__":
-    import sys
-
-    from src.preprocessing import run as preprocess
-    from src.enhancement import run as enhance
-    from src.frequency_decomposition import run as decompose
-    from src.skin_segmentation import run as segment
-    from src.lesion_detection import run as detect, naive_combined_mask
-    from src.postprocessing import run as postprocess
-
-    path = sys.argv[1] if len(sys.argv) > 1 else "test_image.jpg"
-    with open(path, "rb") as f:
-        image, _ = preprocess(f.read())
-
-    enhanced = enhance(image)["enhanced"]
-    freq = decompose(enhanced)
-    seg = segment(enhanced)
-    concerns = postprocess(detect(freq, seg), seg)
-
-    improved = combine_masks([c["mask"] for c in concerns.values()])
-    baseline = naive_combined_mask(enhanced, seg["skin_mask"])
-
-    metrics = run(baseline, improved)
-    for pipeline, m in metrics.items():
-        print(f"{pipeline:9s} iou={m['iou']:<5} dice={m['dice']:<5} "
-              f"precision={m['precision']:<5} recall={m['recall']:<5} f1={m['f1']}")
-    print("evaluation.py: OK")
+def combine_masks(masks: list[np.ndarray]) -> np.ndarray:
+    """Returns union of binary masks (visualization only)."""
+    if not masks:
+        raise ValueError("combine_masks requires at least one mask")
+    out = np.zeros_like(masks[0])
+    for mask in masks:
+        validate_binary_mask(mask, "mask")
+        out = np.logical_or(out, mask > 0).astype(np.uint8) * 255
+    return out

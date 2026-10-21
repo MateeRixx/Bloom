@@ -1,4 +1,8 @@
-"""Raw concern masks: redness (LAB-A), blemish (LAB-L), acne (DoG + watershed). Sab analysis_zone tak restricted."""
+"""Raw concern masks: redness (LAB-A), blemish (LAB-L), acne (DoG + watershed).
+
+Production thresholds are ROI-adaptive. A deliberately naive fixed-threshold
+baseline is kept for offline comparison only.
+"""
 from __future__ import annotations
 
 import cv2
@@ -8,17 +12,19 @@ from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 
 from src.config import (
-    REDNESS_A_MIN_DELTA,
-    REDNESS_A_STD_MULT,
+    ACNE_DOG_THRESHOLD_RATIO,
     BLEMISH_L_MIN_DELTA,
     BLEMISH_L_STD_MULT,
-    ACNE_DOG_THRESHOLD_RATIO,
     LESION_MORPH_KERNEL,
+    NAIVE_ACNE_DOG_ABS_THRESHOLD,
+    NAIVE_BLEMISH_L_THRESHOLD,
+    NAIVE_REDNESS_A_THRESHOLD,
+    REDNESS_A_MIN_DELTA,
+    REDNESS_A_STD_MULT,
     WATERSHED_DIST_THRESHOLD,
     WATERSHED_MIN_DISTANCE,
-    NAIVE_REDNESS_A_THRESHOLD,
-    NAIVE_BLEMISH_L_THRESHOLD,
 )
+from src.thresholding import mean_std_threshold, ratio_of_max_threshold
 
 
 def _restrict(mask: np.ndarray, zone: np.ndarray) -> np.ndarray:
@@ -27,28 +33,20 @@ def _restrict(mask: np.ndarray, zone: np.ndarray) -> np.ndarray:
 
 
 def _redness_mask(lab: np.ndarray, zone: np.ndarray) -> np.ndarray:
-    """Returns binary mask of pixels redder than (skin mean A + delta)."""
+    """Returns binary mask of pixels redder than the adaptive skin-A threshold."""
     a = lab[:, :, 1]
-    skin_pixels = a[zone > 0]
-    if skin_pixels.size == 0:
-        return np.zeros_like(a)
-    # contrast-adaptive: offset = max(floor, mult * std) => uniform skin flags nothing,
-    # high-contrast skin ko proportionally zyada offset (fixed delta se robust)
-    offset = max(REDNESS_A_MIN_DELTA, REDNESS_A_STD_MULT * float(skin_pixels.std()))
-    threshold = float(skin_pixels.mean()) + offset
-    mask = np.where(a > threshold, 255, 0).astype(np.uint8)
+    _, mask = mean_std_threshold(
+        a, zone, REDNESS_A_MIN_DELTA, REDNESS_A_STD_MULT, high_is_foreground=True
+    )
     return _restrict(mask, zone)
 
 
 def _blemish_mask(lab: np.ndarray, zone: np.ndarray) -> np.ndarray:
-    """Returns binary mask of dark spots (L below skin mean - delta)."""
-    l = lab[:, :, 0]
-    skin_pixels = l[zone > 0]
-    if skin_pixels.size == 0:
-        return np.zeros_like(l)
-    offset = max(BLEMISH_L_MIN_DELTA, BLEMISH_L_STD_MULT * float(skin_pixels.std()))
-    threshold = float(skin_pixels.mean()) - offset
-    mask = np.where(l < threshold, 255, 0).astype(np.uint8)
+    """Returns binary mask of dark spots below the adaptive skin-L threshold."""
+    lum = lab[:, :, 0]
+    _, mask = mean_std_threshold(
+        lum, zone, BLEMISH_L_MIN_DELTA, BLEMISH_L_STD_MULT, high_is_foreground=False
+    )
     return _restrict(mask, zone)
 
 
@@ -63,7 +61,7 @@ def _separate_touching(binary: np.ndarray) -> np.ndarray:
         labels=(binary > 0).astype(np.int32),
         exclude_border=False,
     )
-    # weak peaks chhaant do, par kam se kam ek seed bacha rehna chahiye
+    # drop weak peaks, but keep at least one seed
     strong = peaks[dist[tuple(peaks.T)] >= WATERSHED_DIST_THRESHOLD * dist.max()]
     seeds = strong if len(strong) else peaks
     markers = np.zeros(binary.shape, np.int32)
@@ -73,26 +71,43 @@ def _separate_touching(binary: np.ndarray) -> np.ndarray:
 
 
 def _acne_mask(dog: np.ndarray, zone: np.ndarray) -> np.ndarray:
-    """Returns binary acne mask from DoG magnitude, then watershed-split."""
-    magnitude = np.abs(dog)  # dark ya bright dono blob pakdo
-    peak = float(magnitude.max())
-    if peak == 0:
-        return np.zeros_like(dog, dtype=np.uint8)
-    mask = np.where(magnitude >= ACNE_DOG_THRESHOLD_RATIO * peak, 255, 0).astype(np.uint8)
+    """Returns binary acne mask from |DoG|, then watershed-split."""
+    magnitude = np.abs(dog)  # capture both dark and bright blobs
+    _, mask = ratio_of_max_threshold(magnitude, zone, ACNE_DOG_THRESHOLD_RATIO)
     mask = _restrict(mask, zone)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, LESION_MORPH_KERNEL)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     return _separate_touching(mask)
 
 
-def naive_combined_mask(image: np.ndarray, skin_mask: np.ndarray) -> np.ndarray:
-    """Baseline: fixed absolute redness + dark thresholds on broad skin. No adaptive, no exclusions, no watershed."""
-    lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
-    l, a = lab[:, :, 0], lab[:, :, 1]
+def naive_concern_masks(frequency: dict, skin_mask: np.ndarray) -> dict:
+    """Returns per-concern masks for the fixed-threshold baseline.
+
+    No adaptive thresholds, no eye/lip exclusion, no watershed. Used only in the
+    offline evaluation workflow against independent ground truth.
+    """
+    lab = frequency["lab"]
+    lum, a = lab[:, :, 0], lab[:, :, 1]
     red = np.where(a > NAIVE_REDNESS_A_THRESHOLD, 255, 0).astype(np.uint8)
-    dark = np.where(l < NAIVE_BLEMISH_L_THRESHOLD, 255, 0).astype(np.uint8)
-    # broad skin (eyes/lips included) => false positives expected
-    return cv2.bitwise_and(cv2.bitwise_or(red, dark), skin_mask)
+    dark = np.where(lum < NAIVE_BLEMISH_L_THRESHOLD, 255, 0).astype(np.uint8)
+    acne = np.where(np.abs(frequency["dog"]) >= NAIVE_ACNE_DOG_ABS_THRESHOLD, 255, 0).astype(np.uint8)
+    return {
+        "acne": _restrict(acne, skin_mask),
+        "redness": _restrict(red, skin_mask),
+        "blemish": _restrict(dark, skin_mask),
+    }
+
+
+def naive_combined_mask(image: np.ndarray, skin_mask: np.ndarray) -> np.ndarray:
+    """Returns union of the naive per-concern masks (visual baseline only)."""
+    from src import frequency_decomposition
+
+    frequency = frequency_decomposition.run(image)
+    masks = naive_concern_masks(frequency, skin_mask)
+    out = np.zeros_like(skin_mask)
+    for mask in masks.values():
+        out = cv2.bitwise_or(out, mask)
+    return out
 
 
 def run(frequency: dict, segmentation: dict) -> dict:
@@ -110,12 +125,14 @@ def run(frequency: dict, segmentation: dict) -> dict:
 if __name__ == "__main__":
     import sys
 
-    from src.preprocessing import run as preprocess
     from src.enhancement import run as enhance
     from src.frequency_decomposition import run as decompose
+    from src.preprocessing import run as preprocess
     from src.skin_segmentation import run as segment
 
-    path = sys.argv[1] if len(sys.argv) > 1 else "test_image.jpg"
+    if len(sys.argv) < 2:
+        raise SystemExit("usage: python -m src.lesion_detection <image>")
+    path = sys.argv[1]
     with open(path, "rb") as f:
         image, _ = preprocess(f.read())
 

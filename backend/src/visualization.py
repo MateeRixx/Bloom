@@ -7,15 +7,15 @@ import cv2
 import numpy as np
 
 from src.config import (
-    JPEG_QUALITY,
     ACNE_COLOUR,
-    REDNESS_COLOUR,
-    BLEMISH_COLOUR,
     BASELINE_COLOUR,
-    SKIN_MASK_COLOUR,
-    FILL_OPACITY,
-    SKIN_OVERLAY_OPACITY,
+    BLEMISH_COLOUR,
     CONTOUR_THICKNESS,
+    FILL_OPACITY,
+    JPEG_QUALITY,
+    REDNESS_COLOUR,
+    SKIN_MASK_COLOUR,
+    SKIN_OVERLAY_OPACITY,
 )
 
 
@@ -88,14 +88,17 @@ def generate_all(original: np.ndarray, enhanced: np.ndarray, skin_mask: np.ndarr
 if __name__ == "__main__":
     import sys
 
-    from src.preprocessing import run as preprocess
     from src.enhancement import run as enhance
     from src.frequency_decomposition import run as decompose
-    from src.skin_segmentation import run as segment
-    from src.lesion_detection import run as detect, naive_combined_mask
+    from src.lesion_detection import naive_combined_mask
+    from src.lesion_detection import run as detect
     from src.postprocessing import run as postprocess
+    from src.preprocessing import run as preprocess
+    from src.skin_segmentation import run as segment
 
-    path = sys.argv[1] if len(sys.argv) > 1 else "test_image.jpg"
+    if len(sys.argv) < 2:
+        raise SystemExit("usage: python -m src.visualization <image>")
+    path = sys.argv[1]
     with open(path, "rb") as f:
         image, _ = preprocess(f.read())
 

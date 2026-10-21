@@ -1,4 +1,5 @@
 const SEVERITY_COLOURS = {
+  Clear: "bg-slate-100 text-slate-600",
   Mild: "bg-green-100 text-green-800",
   Moderate: "bg-yellow-100 text-yellow-800",
   Severe: "bg-red-100 text-red-800",
@@ -10,9 +11,25 @@ const CONCERN_DOT = {
   Blemishes: "text-yellow-500",
 };
 
-/** One concern card: name, severity pill, count/area, confidence. */
-function ConcernCard({ name, concern }) {
+/** One concern card: name, severity pill, count/area, relative extent. */
+function ConcernCard({ name, concern, compact }) {
   const count = typeof concern.count === "number" ? `${concern.count} regions` : "—";
+  const isClear = concern.severity === "Clear";
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50 border border-surface-border">
+        <span className={CONCERN_DOT[name]} aria-hidden="true">●</span>
+        <span className="text-sm font-medium text-slate-700 w-20 truncate">{name}</span>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${SEVERITY_COLOURS[concern.severity]}`}>
+          {concern.severity}
+        </span>
+        <span className="ml-auto text-xs text-slate-500">
+          {isClear ? "Clear" : `${concern.area_pct}%`}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg border border-surface-border p-4">
@@ -26,9 +43,11 @@ function ConcernCard({ name, concern }) {
         </span>
       </div>
       <p className="mt-2 text-sm text-slate-500">
-        {count} · {concern.area_pct}% of skin area
+        {isClear ? "No regions detected by this algorithm" : `${count} · ${concern.area_pct}% of skin area`}
       </p>
-      <p className="text-sm text-slate-400">Confidence: {concern.confidence}</p>
+      <p className="text-sm text-slate-400">
+        Relative extent: {Math.round((concern.extent_score || 0) * 100)}%
+      </p>
     </div>
   );
 }
@@ -36,13 +55,24 @@ function ConcernCard({ name, concern }) {
 /**
  * Severity pills for acne, redness and blemishes.
  * @param {object} concerns - { acne, redness, blemishes }
+ * @param {boolean} compact - compact inline style for history
  */
-function ConcernBadges({ concerns }) {
+function ConcernBadges({ concerns, compact }) {
   const items = [
     { name: "Acne", concern: concerns.acne },
     { name: "Redness", concern: concerns.redness },
     { name: "Blemishes", concern: concerns.blemishes },
   ];
+
+  if (compact) {
+    return (
+      <div className="flex flex-col gap-2">
+        {items.map((item) => (
+          <ConcernCard key={item.name} {...item} compact />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <section className="rounded-xl border border-surface-border bg-white p-6">
