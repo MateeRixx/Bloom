@@ -1,13 +1,18 @@
 fastapi==0.111.0
 uvicorn==0.29.0
-python-multipart==0.0.9
+python-multipart==0.0.31
 opencv-contrib-python==4.11.0.86
 scikit-image==0.22.0
-scikit-learn==1.4.2
+scikit-learn==1.5.0
 mediapipe==0.10.14
 numpy==1.26.4
 scipy==1.13.0
-Pillow==10.3.0
+Pillow==12.3.0
 matplotlib==3.8.4
-python-dotenv==1.0.1
+python-dotenv==1.2.2
 slowapi==0.1.9
+
+# Security note: two packages stay at their vulnerable pins because upstream
+# requires cap them. Documented, not silently ignored.
+#   - protobuf 4.25.9  (PYSEC-2026-1805): mediapipe==0.10.14 requires protobuf<5
+#   - starlette 0.37.2 (PYSEC-2026-1941 etc.): fastapi==0.111.0 requires starlette<0.38

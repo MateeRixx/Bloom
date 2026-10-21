@@ -40,10 +40,12 @@ DOG_SIGMA_2 = 3.0                  # Coarse Gaussian; DoG = sigma1 - sigma2
 LP_KERNEL_SIZE = (21, 21)          # Low-pass Gaussian kernel
 HP_KERNEL_SIZE = (21, 21)          # High-pass = original - LP
 
-# --- Lesion detection ---
-REDNESS_A_DELTA = 12               # LAB A above (mean_skin_A + delta) = redness (adaptive)
-BLEMISH_L_DELTA = 30               # L below (mean_skin_L - delta) = dark spot
-ACNE_DOG_THRESHOLD_RATIO = 0.15    # Fraction of DoG max used as threshold
+# --- Lesion detection (contrast-adaptive: offset = max(floor, mult * skin std)) ---
+REDNESS_A_MIN_DELTA = 10           # Min A offset above skin mean (guards low-contrast/uniform skin)
+REDNESS_A_STD_MULT = 1.4           # A offset scales with skin redness spread
+BLEMISH_L_MIN_DELTA = 25           # Min L offset below skin mean (guards dark spots vs shadow)
+BLEMISH_L_STD_MULT = 1.5           # L offset scales with skin luminance spread
+ACNE_DOG_THRESHOLD_RATIO = 0.30    # Fraction of DoG max used as threshold
 LESION_MORPH_KERNEL = (3, 3)       # Small close kernel to join speckled lesion px
 MIN_LESION_AREA_PX = 50            # Contours smaller than this = noise, ignored
 
@@ -54,8 +56,8 @@ WATERSHED_MIN_DISTANCE = 10        # Min px between local maxima (spot separatio
 # --- Severity thresholds (area as % of skin region) ---
 SEVERITY = {
     "acne":    {"Mild": 1.0, "Moderate": 3.0},   # >3 = Severe
-    "redness": {"Mild": 5.0, "Moderate": 15.0},
-    "blemish": {"Mild": 1.0, "Moderate": 3.0},
+    "redness": {"Mild": 4.0, "Moderate": 12.0},
+    "blemish": {"Mild": 2.0, "Moderate": 6.0},
 }
 
 # --- Naive baseline (comparison only) ---

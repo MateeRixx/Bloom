@@ -8,8 +8,10 @@ from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 
 from src.config import (
-    REDNESS_A_DELTA,
-    BLEMISH_L_DELTA,
+    REDNESS_A_MIN_DELTA,
+    REDNESS_A_STD_MULT,
+    BLEMISH_L_MIN_DELTA,
+    BLEMISH_L_STD_MULT,
     ACNE_DOG_THRESHOLD_RATIO,
     LESION_MORPH_KERNEL,
     WATERSHED_DIST_THRESHOLD,
@@ -30,8 +32,10 @@ def _redness_mask(lab: np.ndarray, zone: np.ndarray) -> np.ndarray:
     skin_pixels = a[zone > 0]
     if skin_pixels.size == 0:
         return np.zeros_like(a)
-    # adaptive: baseline skin redness se kitna upar hai (absolute threshold se robust)
-    threshold = float(skin_pixels.mean()) + REDNESS_A_DELTA
+    # contrast-adaptive: offset = max(floor, mult * std) => uniform skin flags nothing,
+    # high-contrast skin ko proportionally zyada offset (fixed delta se robust)
+    offset = max(REDNESS_A_MIN_DELTA, REDNESS_A_STD_MULT * float(skin_pixels.std()))
+    threshold = float(skin_pixels.mean()) + offset
     mask = np.where(a > threshold, 255, 0).astype(np.uint8)
     return _restrict(mask, zone)
 
@@ -42,7 +46,8 @@ def _blemish_mask(lab: np.ndarray, zone: np.ndarray) -> np.ndarray:
     skin_pixels = l[zone > 0]
     if skin_pixels.size == 0:
         return np.zeros_like(l)
-    threshold = float(skin_pixels.mean()) - BLEMISH_L_DELTA
+    offset = max(BLEMISH_L_MIN_DELTA, BLEMISH_L_STD_MULT * float(skin_pixels.std()))
+    threshold = float(skin_pixels.mean()) - offset
     mask = np.where(l < threshold, 255, 0).astype(np.uint8)
     return _restrict(mask, zone)
 
