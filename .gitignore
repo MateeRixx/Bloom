@@ -27,3 +27,10 @@ dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# ML module artifacts (data, runs, model weights, private images)
+ml/data/
+ml/runs/
+ml/annotations/images/
+*.pt
+*.onnx
