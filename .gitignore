@@ -10,6 +10,7 @@ venv/
 *.egg-info/
 backend/data/
 .run-logs/
+.deploy-env/
 # Local test artifacts
 backend/.pytest-*/
 

@@ -2,10 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 // Production CSP injected into built index.html only (keeps Vite HMR working in dev).
+const apiOrigin = (process.env.VITE_API_URL || "").trim().replace(/\/$/, "");
 const CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; " +
   "font-src https://fonts.gstatic.com; img-src 'self' data:; " +
-  "connect-src 'self' https://bloom-api.onrender.com;";
+  `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ""};`;
 
 /** @type {import('vite').Plugin} */
 const cspPlugin = {

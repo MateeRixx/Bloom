@@ -2,7 +2,10 @@ import ConcernBadges from "./ConcernBadges.jsx";
 import Icon from "./Icon.jsx";
 
 function ProgressTrend({ history, onDelete }) {
-  const formatDate = (value) => new Date(`${value}Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  const formatDate = (value) => {
+    const timestamp = /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : `${value.replace(" ", "T")}Z`;
+    return new Date(timestamp).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  };
   return <section className="history-panel" aria-live="polite">
     <div className="section-heading"><div><p className="eyebrow">Your account</p><h2>Past reviews</h2></div><span>{history.length} saved</span></div>
     {history.length === 0 ? <div className="history-empty"><strong>No past reviews</strong><p>Your completed reviews will appear here. Original photos are never saved.</p></div> : <div className="history-list">

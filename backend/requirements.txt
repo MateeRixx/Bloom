@@ -9,6 +9,7 @@ scipy==1.13.0
 Pillow==12.3.0
 python-dotenv==1.2.2
 slowapi==0.1.9
+psycopg[binary]==3.3.8
 
 # Security note: two packages stay at their vulnerable pins because upstream
 # requires cap them. Documented, not silently ignored.
