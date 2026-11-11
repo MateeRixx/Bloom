@@ -19,9 +19,9 @@ HTTPS origins before deploying. Never commit either file.
 ## 2. Create the API service
 
 - Create a Render Python web service named `mateerixx-bloom-api` from this GitHub repository, using the repository root as the service root.
-- Set build command to `pip install -r backend/requirements.txt && bash setup_ml.sh`. The script downloads both model files into `backend/models/` during the build.
+- Set build command to `pip install -r backend/requirements.txt`. The classical image pipeline does not need the optional ML packages or model downloads.
 - Set start command to `cd backend && uvicorn main:app --host 0.0.0.0 --port $PORT`.
-- Import `.deploy-env/backend.env`. It includes the Neon `DATABASE_URL`, a persistent `AUTH_SECRET`, Python 3.11, and the expected frontend origin. Set the health check path to `/api/health`.
+- Import `.deploy-env/backend.env`. It includes the Neon `DATABASE_URL`, a persistent `AUTH_SECRET`, Python 3.11, the expected frontend origin, and `BLOOM_ENABLE_ML=false` for lower memory use. Set the health check path to `/api/health`.
 - Neon stores accounts and scan history. A Render persistent disk is not needed for those records. Uploaded photos remain in memory and are not saved.
 - Size the service after measuring a real scan with both ML models. The health endpoint reports whether the two checkpoints are installed and whether both lazy-loaded models have loaded; verify a successful scan response separately.
 

@@ -13,10 +13,16 @@ from typing import Any
 
 import numpy as np
 
-try:
-    import torch
-    import torch.nn as nn
-except Exception as _torch_error:
+ML_ENABLED = os.getenv("BLOOM_ENABLE_ML", "false").strip().lower() in {"1", "true", "yes", "on"}
+
+if ML_ENABLED:
+    try:
+        import torch
+        import torch.nn as nn
+    except Exception:
+        torch = None
+        nn = None
+else:
     torch = None
     nn = None
 
@@ -34,6 +40,8 @@ _torch_available = False
 def _ensure_torch():
     """Import torch if available; set flag for callers."""
     global _torch_available
+    if not ML_ENABLED:
+        return
     if _torch_available:
         return
     try:

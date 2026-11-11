@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import time
+import os
 
 import cv2
 import numpy as np
@@ -120,14 +121,18 @@ def run(image_bytes: bytes) -> dict:
     images["imperfection_heatmap"] = visualization.encode_image_to_base64(stages["imperfection_map"]["heatmap"])
     images["imperfection_overlay"] = visualization.encode_image_to_base64(stages["imperfection_map"]["overlay"])
     visualization_done = time.perf_counter()
-    from PIL import Image as PILImage
+    ml_enabled = os.getenv("BLOOM_ENABLE_ML", "false").strip().lower() in {"1", "true", "yes", "on"}
+    if ml_enabled:
+        from PIL import Image as PILImage
 
-    from ml_inference import run_ml_analysis
+        from ml_inference import run_ml_analysis
 
-    try:
-        pil_img = PILImage.fromarray(stages["enhanced"])
-        ml_result = run_ml_analysis(pil_img)
-    except Exception:
+        try:
+            pil_img = PILImage.fromarray(stages["enhanced"])
+            ml_result = run_ml_analysis(pil_img)
+        except Exception:
+            ml_result = {"available": False}
+    else:
         ml_result = {"available": False}
     ml_done = time.perf_counter()
     return {
