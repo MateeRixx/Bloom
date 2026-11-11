@@ -5,7 +5,7 @@ import react from "@vitejs/plugin-react";
 const apiOrigin = (process.env.VITE_API_URL || "").trim().replace(/\/$/, "");
 const CSP =
   "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; " +
-  "font-src https://fonts.gstatic.com; img-src 'self' data:; " +
+  "font-src https://fonts.gstatic.com; img-src 'self' data: blob:; " +
   `connect-src 'self'${apiOrigin ? ` ${apiOrigin}` : ""};`;
 
 /** @type {import('vite').Plugin} */
