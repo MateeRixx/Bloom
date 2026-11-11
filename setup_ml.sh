@@ -19,14 +19,15 @@ fi
 echo "OK: using $PYTHON"
 
 echo "Installing huggingface_hub, ultralytics, timm, torchvision, torch..."
+ML_CONSTRAINTS="backend/constraints-ml.txt"
 if "$PYTHON" -m pip --version >/dev/null 2>&1; then
-    if "$PYTHON" -m pip install huggingface_hub ultralytics timm torchvision torch --quiet; then
+    if "$PYTHON" -m pip install -c "$ML_CONSTRAINTS" huggingface_hub ultralytics timm torchvision torch --quiet; then
         install_status=0
     else
         install_status=$?
     fi
 elif command -v uv >/dev/null 2>&1; then
-    if UV_CACHE_DIR="${UV_CACHE_DIR:-$(mktemp -d)}" uv pip install --python "$PYTHON" huggingface_hub ultralytics timm torchvision torch --quiet; then
+    if UV_CACHE_DIR="${UV_CACHE_DIR:-$(mktemp -d)}" uv pip install --python "$PYTHON" -c "$ML_CONSTRAINTS" huggingface_hub ultralytics timm torchvision torch --quiet; then
         install_status=0
     else
         install_status=$?

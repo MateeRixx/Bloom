@@ -1,0 +1,3 @@
+# Keep ABI-sensitive core packages aligned with requirements.txt when optional ML dependencies install.
+numpy==1.26.4
+scipy==1.13.0
